@@ -2,15 +2,15 @@
 <ServiceProvider_Request>
   <Version>1</Version>
   <RequestType>TransactionResult</RequestType>
-  <DateTime>20200601154050</DateTime>
+  <DateTime>20260626120000</DateTime>
   <Terminal Type="5">55411</Terminal>
   <ServiceNo>1</ServiceNo>
-  <PersonalAccount>123</PersonalAccount>
+  <PersonalAccount>31620/26</PersonalAccount>
   <Currency>933</Currency>
-  <RequestId>9225</RequestId>
+  <RequestId>TEST-019</RequestId>
   <TransactionResult>
-    <TransactionId>ERIP-TRX-999</TransactionId>
-    <ServiceProvider_TrxId>48907436</ServiceProvider_TrxId>
+    <TransactionId>717129113</TransactionId>  
+    <ServiceProvider_TrxId>96197000</ServiceProvider_TrxId>
     <ErrorText>Операция отменена</ErrorText>
   </TransactionResult>
 </ServiceProvider_Request>
