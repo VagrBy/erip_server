@@ -4,31 +4,40 @@ import secrets
 import json
 from datetime import datetime
 from typing import Optional, Dict, Any
-from sqlalchemy import or_
+from sqlalchemy import or_, text
 from app.models import Transaction, Account, TransactionError
 from app.db import SessionLocal
 
+ERROR_ACCOUNT_NOT_FOUND = "Заказ {account}. Информация для оплаты не найдена. Проверьте номер заказа. vagr.by"
+ERROR_ZERO_DEBT = "Заказ {account}. Оплата при нулевой задолженности запрещена. vagr.by"
+ERROR_ACCOUNT_LOCKED = "Оплата по счету {account} временно заблокирована. vagr.by"
+
 logger = structlog.get_logger()
 
-def get_stored_response(request_id: str) -> Optional[str]:
-    """Возвращает сохранённый XML из metadata_json (идемпотентность)"""
+def get_stored_response(request_id: str, request_type: str) -> Optional[str]:
+    """
+    Возвращает сохранённый XML-ответ по паре (request_id, request_type).
+    """
+    if not request_id or not request_type:
+        return None
+        
     db = SessionLocal()
     try:
         row = db.query(Transaction).filter(
-            Transaction.erip_request_id == request_id
+            Transaction.erip_request_id == request_id,
+            Transaction.request_type == request_type
         ).first()  # type: ignore[call-arg]
         
         if row and row.metadata_json:
             try:
-                meta_raw = row.metadata_json
-                if meta_raw:
-                    return json.loads(meta_raw).get("response_xml")
+                meta = json.loads(row.metadata_json)
+                return meta.get("response_xml")
             except (json.JSONDecodeError, TypeError):
-                logger.warning("json_parse_failed", request_id=request_id)
+                logger.warning("cache_parse_error", request_id=request_id, request_type=request_type)
                 return None
         return None
     except Exception as e:
-        logger.error("db_query_error", error=str(e), request_id=request_id)
+        logger.error("cache_query_error", error=str(e), request_id=request_id, request_type=request_type)
         return None
     finally:
         db.close()
@@ -39,74 +48,136 @@ def update_transaction_status(
     status: str, 
     error_text: Optional[str] = None
 ) -> bool:
-    """Обновляет статус транзакции. Параметры ID могут быть none"""
+    """Обновляет статус и логирует ошибку в TRANSACTION_ERRORS при статусе failed"""
     db = SessionLocal()
     try:
-        # Если оба ID None — ничего
-        if not erip_trx_id and not service_trx_id:
-            logger.warning("no_ids_provided_for_update")
-            return False
-            
-        # Фильтр: ищем по любому из предоставленных ID
         filters = []
         if erip_trx_id:
             filters.append(Transaction.erip_transaction_id == erip_trx_id)
         if service_trx_id:
             filters.append(Transaction.service_trx_id == service_trx_id)
-        
-        trx = db.query(Transaction).filter(or_(*filters)).first() # type: ignore[call-arg]
-        
+            
+        if not filters:
+            logger.warning("no_ids_for_status_update")
+            return False
+            
+        trx = db.query(Transaction).filter(or_(*filters)).first()  # type: ignore[call-arg]
         if not trx:
-            logger.warning("transaction_not_found_for_update", 
-                          erip_trx_id=erip_trx_id, service_trx_id=service_trx_id)
+            logger.warning("transaction_not_found_for_update", erip_trx_id=erip_trx_id, service_trx_id=service_trx_id)
             return False
         
+        # 1. Обновляем основную транзакцию
         trx.status = status
         trx.processed_at = datetime.now()
         if error_text:
             trx.error_text = error_text[:4000] if len(error_text) > 4000 else error_text
-        
+            
+        # 2. 🔹 ЛОГИРОВАНИЕ ОШИБКИ В TRANSACTION_ERRORS
+        if error_text and status == "failed":
+            # 🔹 Добавили # type: ignore[call-arg] для Pylance
+            error_record = TransactionError(
+                transaction_id=trx.id,  # type: ignore[call-arg]
+                error_stage="TransactionResult",  # type: ignore[call-arg]
+                error_code=400,  # type: ignore[call-arg]
+                error_text=error_text[:4000] if len(error_text) > 4000 else error_text,  # type: ignore[call-arg]
+                created_at=datetime.now()  # type: ignore[call-arg]
+            )
+            db.add(error_record)
+            logger.info("error_logged_to_db", transaction_id=trx.id, error=error_text[:50])
+            
         db.commit()
-        logger.info("transaction_status_updated", 
-                   erip_trx_id=erip_trx_id, service_trx_id=service_trx_id, new_status=status)
+        logger.info("transaction_status_updated", trx_id=trx.id, status=status)
         return True
     except Exception as e:
         db.rollback()
-        logger.error("db_update_error", error=str(e), erip_trx_id=erip_trx_id)
+        logger.error("db_update_error", error=str(e), exc_info=True)
         return False
     finally:
         db.close()
 
-def get_account_info(personal_account: str) -> Optional[Dict[str, Any]]:
-    """Получаем данные счёта из таблицы accounts"""
+def get_account_info_alex(personal_account: str) -> Optional[Dict[str, Any]]:
+    """
+    Получает данные счёта из рабочей схемы ALEX.
+    Возвращает None или маркер ошибки {"_error": "текст"} для Примера 7.
+    """
     db = SessionLocal()
     try:
-        acc = db.query(Account).filter(
-            Account.account_number == personal_account
-        ).first()  # type: ignore[call-arg]
-        
-        if not acc:
+        try:
+            num_erip = int(personal_account.strip())
+        except ValueError:
+            logger.warning("invalid_num_erip_format", account=personal_account)
             return None
         
-        # Форматируем числа с запятой (требование ЕРИП)
-        def fmt(val: Optional[float]) -> str:
-            return f"{val:.2f}".replace(".", ",") if val is not None else "0,00"
+        # Проверяем наличие записей
+        check_query = text("""
+            SELECT COUNT(*)
+            FROM ALEX.PAYMENTS
+            WHERE NUM_ERIP = :num_erip
+        """)
+        count = db.execute(check_query, {"num_erip": num_erip}).scalar() or 0
+        
+        if count == 0:
+            # 🔹 Формируем текст ошибки ПО СПЕЦИФИКАЦИИ (Пример 7 из PDF)
+            error_msg = (
+                f"Заказ {personal_account}. "
+                f"Информация для оплаты не найдена. Проверьте номер заказа. "
+                f"vagr.by"
+            )
+            logger.info("alex_account_not_found", num_erip=num_erip, error=error_msg)
+            return {"_error": error_msg}
+        
+        # Считаем задолженность
+        debt_query = text("""
+            SELECT NVL(SUM(SUMMA), 0)
+            FROM ALEX.PAYMENTS
+            WHERE NUM_ERIP = :num_erip
+        """)
+        debt_val = db.execute(debt_query, {"num_erip": num_erip}).scalar() or 0
+
+        # 🔹 ПРОВЕРКА НА НУЛЕВУЮ ЗАДОЛЖЕННОСТЬ
+        if float(debt_val) <= 0:
+            error_msg = ERROR_ZERO_DEBT.format(account=personal_account)
+            logger.info("alex_zero_debt", num_erip=num_erip, error=error_msg)
+            return {"_error": error_msg}    
+        
+        # Получаем адрес
+        addr_query = text("""
+            SELECT obj.PRIMADR
+            FROM ALEX.PAYMENTS p
+            JOIN ALEX.ORDEROBJ obj ON p.IDORDER = obj.IDORDER
+            WHERE p.NUM_ERIP = :num_erip AND ROWNUM = 1
+        """)
+        addr_result = db.execute(addr_query, {"num_erip": num_erip}).fetchone()
+        
+        if not addr_result or not addr_result[0]:
+            error_msg = (
+                f"Заказ {personal_account}. "
+                f"Информация для оплаты не найдена. Проверьте номер заказа. "
+                f"vagr.by"
+            )
+            return {"_error": error_msg}
+        
+        def fmt(val: float) -> str:
+            return f"{val:.2f}".replace(".", ",")
+        
+        street = addr_result[0].strip() if addr_result and addr_result[0] else ""
         
         return {
-            "debt": fmt(acc.debt_amount),
-            "editable": acc.editable_flag or "Y",
-            "min_amount": fmt(acc.min_amount),
-            "max_amount": fmt(acc.max_amount),
-            "surname": acc.holder_surname or "",
-            "firstname": acc.holder_firstname or "",
-            "patronymic": acc.holder_patronymic or "",
-            "city": acc.city or "",
-            "street": acc.street or "",
-            "house": acc.house or "",
-            "apartment": acc.apartment or ""
+            "debt": fmt(float(debt_val)),
+            "editable": "Y",
+            "min_amount": "0,01",
+            "max_amount": "100000,00",
+            "surname": "Ф***в",
+            "firstname": "Имя",
+            "patronymic": "Отчество",
+            "city": "",
+            "street": street,
+            "house": "",
+            "apartment": ""
         }
+        
     except Exception as e:
-        logger.error("db_account_query_error", error=str(e))
+        logger.error("alex_db_error", error=str(e), personal_account=personal_account, exc_info=True)
         return None
     finally:
         db.close()
@@ -128,11 +199,9 @@ def save_transaction(
 
     db = SessionLocal()
     try:
-        # Генерация 8-значного ID, если не передан
         if svc_trx_id is None:
             svc_trx_id = "".join([str(secrets.randbelow(10)) for _ in range(8)])
 
-        # Метаданные
         metadata = {
             "request_type": req_type,
             "erip_trx_id": erip_trx_id,
@@ -143,7 +212,6 @@ def save_transaction(
             "response_xml": response_xml 
         }
 
-        # Объект модели
         trx = Transaction(
             erip_request_id=req_id,  # type: ignore[call-arg]
             personal_account=account,  # type: ignore[call-arg]

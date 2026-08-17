@@ -5,13 +5,10 @@
   <DateTime>20200601153456</DateTime>
   <Terminal Type="5">55411</Terminal>
   <ServiceNo>1</ServiceNo>
-  <PersonalAccount>123</PersonalAccount>
+  <PersonalAccount>123456</PersonalAccount>
   <Currency>933</Currency>
-  <RequestId>9221</RequestId>
+  <RequestId>ERROR-TEST-002</RequestId>
   <ServiceInfo>
     <Agent>999</Agent>
-    <Amount>
-      <Debt>30,21</Debt>  <!-- Сумма от клиента (игнорировать) -->
-    </Amount>
   </ServiceInfo>
 </ServiceProvider_Request>
