@@ -2,14 +2,14 @@
 <ServiceProvider_Request>
   <Version>1</Version>
   <RequestType>TransactionResult</RequestType>
-  <DateTime>20200601154050</DateTime>
+  <DateTime>20200601155800</DateTime>
   <Terminal Type="5">55411</Terminal>
-  <ServiceNo>1</ServiceNo>
-  <PersonalAccount>123</PersonalAccount>
+  <ServiceNo>20001</ServiceNo>
+  <PersonalAccount>72345/25</PersonalAccount>
   <Currency>933</Currency>
-  <RequestId>9225</RequestId>
+  <RequestId>TEST-050</RequestId>
   <TransactionResult>
-    <TransactionId>ERIP-TRX-999</TransactionId>
-    <ServiceProvider_TrxId>48907436</ServiceProvider_TrxId>
+    <TransactionId>717129176</TransactionId>  
+    <ServiceProvider_TrxId>4517185</ServiceProvider_TrxId>
   </TransactionResult>
 </ServiceProvider_Request>

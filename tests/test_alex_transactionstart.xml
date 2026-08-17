@@ -2,16 +2,16 @@
 <ServiceProvider_Request>
   <Version>1</Version>
   <RequestType>TransactionStart</RequestType>
-  <DateTime>20260525150000</DateTime>
+  <DateTime>20260626120000</DateTime>
   <Terminal Type="5">55411</Terminal>
-  <ServiceNo>1</ServiceNo>
-  <PersonalAccount>123456</PersonalAccount>
+  <ServiceNo>20001</ServiceNo>
+  <PersonalAccount>72345/25</PersonalAccount>
   <Currency>933</Currency>
-  <RequestId>TEST-REQ-002</RequestId>
+  <RequestId>TEST-050</RequestId>
   <TransactionStart>
-    <Amount>155000</Amount>
-    <TransactionId>ERIP-TRX-999</TransactionId>
+    <Amount>8,40</Amount>
+    <TransactionId>717129176</TransactionId>
     <Agent>999</Agent>
-    <AuthorizationType>BANK999</AuthorizationType>
+    <AuthorizationType>MS</AuthorizationType>
   </TransactionStart>
 </ServiceProvider_Request>

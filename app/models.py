@@ -15,6 +15,7 @@ class Transaction(Base):
     transaction_id = Column("transaction_id", String(32))
     request_type = Column("request_type", String(20))
     erip_transaction_id = Column("erip_transaction_id", String(32))
+    order_year = Column(String(4)) 
     status = Column("status", String(20), default="pending")
     error_code = Column("error_code", Integer)
     error_text = Column("error_text", CLOB)
@@ -23,6 +24,8 @@ class Transaction(Base):
     metadata_json = Column("metadata_json", CLOB)
     auth_type = Column("auth_type", String(50))
     terminal_type = Column("terminal_type", String(50))
+    order_year = Column(String(4))
+    idorder = Column(Integer)
 
 class Account(Base):
     __tablename__ = "accounts"
@@ -30,24 +33,19 @@ class Account(Base):
     status = Column("status", String(20), default="active")
     debt_amount = Column("debt_amount", Float, default=0.0)
     editable_flag = Column("editable_flag", String(1), default="N")
-    min_amount = Column("min_amount", Float, default=0.01)
-    max_amount = Column("max_amount", Float, default=100000.0)
+    # min_amount = Column("min_amount", Float, default=0.01)
+    # max_amount = Column("max_amount", Float, default=100000.0)
     holder_surname = Column("holder_surname", String(30))
     holder_firstname = Column("holder_firstname", String(30))
     holder_patronymic = Column("holder_patronymic", String(30))
-    city = Column("city", String(30))
-    street = Column("street", String(30))
-    house = Column("house", String(10))
-    building = Column("building", String(10))
-    apartment = Column("apartment", String(10))
     currency = Column("currency", String(3), default="933")
     service_no = Column("service_no", Integer, default=1)
 
 class TransactionError(Base):
     __tablename__ = "transaction_errors"
     
-    id = Column(Integer, primary_key=True)
-    transaction_id = Column("transaction_id", Integer)
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    transaction_id = Column("transaction_id", Integer)  # Ссылка на transactions.id
     error_stage = Column("error_stage", String(20), nullable=False)
     error_code = Column("error_code", Integer)
     error_text = Column("error_text", CLOB)
