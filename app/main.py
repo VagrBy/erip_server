@@ -24,7 +24,7 @@ from app.services.xml_generator import (
     build_error_response, build_transactionresult_response
 )
 
-setup_logging(level="DEBUG")  # Изменить на INFO для продакшена
+setup_logging(level="DEBUG")  # Изменить на INFO для продакшена ggggg
 logger = structlog.get_logger()
 audit_logger = structlog.get_logger("audit")
 
